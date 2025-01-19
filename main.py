@@ -40,7 +40,6 @@ group_states = load_state()
 
 @dp.my_chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
 async def bot_added_to_group_handler(event: ChatMemberUpdated):
-    print("ADDED")
     if event.new_chat_member.user.id == (await bot.me()).id:
         admin_id = users["roles"]["chat_validators"][0]
         group_name = event.chat.title
@@ -52,7 +51,7 @@ async def bot_added_to_group_handler(event: ChatMemberUpdated):
 
         await bot.send_message(
             admin_id,
-            f"Бот был добавлен в группу '{group_name}'. Вы хотите его активировать?",
+            f"Бот был добавлен в группу {group_name}. Вы хотите его активировать?",
             reply_markup=keyboard.as_markup()
         )
 
@@ -101,7 +100,7 @@ async def command_start_handler(message: Message) -> None:
 async def translate_handler(message: Message) -> None:
     if (group_states.get(str(message.chat.id), False)):
         try:
-            await message.answer(await translator.translate(str(message.text)))
+            await message.reply("TRANSLATED TO:\n" +await translator.translate(str(message.text)))
         except TypeError:
             pass
 
