@@ -33,16 +33,16 @@ Follow these steps to manually install the bot:
     powershell -ExecutionPolicy Bypass -File run_bot.ps1
 
 3. OR Using the Task Scheduler
-    Open Task Scheduler (Win + S → Enter Task Scheduler).
-    Create a new task:
-    Select “Create a simple task.”
-    Set a name, for example: TelegramBot.
-    Choose to run “On login” or “On crash”.
-    In the “Action” section, select “Run Program”.
-    Specify the path to Python: C:\path\to\python.exe.
-    In the “Add arguments” field, specify the path to the script: C:C:\path\to\your_script.py.
-    Click “Finish.”
-    In the task properties on the “Conditions” tab, uncheck “Stop after 3 days” so that the bot will run all the time.
+     - Open Task Scheduler (Win + S → Enter Task Scheduler).
+     - Create a new task:
+     - Select “Create a simple task.”
+     - Set a name, for example: TelegramBot.
+     - Choose to run “On login” or “On crash”.
+     - In the “Action” section, select “Run Program”.
+     - Specify the path to Python: C:\path\to\python.exe.
+     - In the “Add arguments” field, specify the path to the script: C:C:\path\to\your_script.py.
+     - Click “Finish.”
+     - In the task properties on the “Conditions” tab, uncheck “Stop after 3 days” so that the bot will run all the time.
 
 ## 3. Configuration
 
