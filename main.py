@@ -29,6 +29,7 @@ dp = Dispatcher()
 
 STATE_FILE = "chat_state.json"
 TG_PROFILE_REGEX = re.compile(r"https?://t\.me/([\w\d_]+)")
+TG_USERNAME_REGEX = re.compile(r'@(\w{5,32})')
 
 def load_state(filename:str) -> dict:
     """
@@ -108,7 +109,7 @@ async def reject_group(callback: CallbackQuery):
 
 @dp.message(Command("settings"))
 async def change_settings(message : Message):
-    if message.from_user.username in users["authorized"]:
+    if message.from_user.username in users["admins"]:
         if message.chat.type == "private":
             keyboard = InlineKeyboardBuilder()
             keyboard.button(text="Добавить Администратора", callback_data=f"settings:add_admin:{message.from_user.id}")
@@ -134,26 +135,53 @@ async def activate_group(callback: CallbackQuery, state: FSMContext):
     match action:
         case "add_admin":
             await callback.message.edit_text("Поделитесь контактом пользователя, которого вы хотите наделить правами администратора.\nПримите во внимание, что новый администратор так же сможет добавлять администраторов, подтверждать использование бота в чатах, выбирать валидатора.")
-        case "add_validator":
-            bot.send_message(users["roles"]["validators"][0]) 
-            await callback.message.edit_text("В данный момент за валидацию отвечает")
+        case "set_validator":
+            avt_val = users["validators"]["active_validator"]
+            val_list = ""
+            print(users["validators"].keys())
+            for user,_ in users["validators"].items():
+                if user!="active_validator" and user!=users["validators"]["active_validator"]:
+                     val_list+="@"+str(user)+"\n"
+            await callback.message.edit_text(f"В данный момент за валидацию отвечает пользователь {avt_val}.\nВыберите из списка валидатора, которого вы хотите назначить ответственным за подтверждение чатов:\n{val_list}")
 
 @dp.message(F.text.regexp(TG_PROFILE_REGEX))
 async def process_contact(message: Message):
-    match = TG_PROFILE_REGEX.search(message.text)
-    if match:
-        username = match.group(1)
-        if username not in users["roles"]["admins"]:
-            users["authorized"].append(username)
-            users["roles"]["admins"].append(username)
-            users["roles"]["chat_validators"].append(username)
-            save_state(users, "users.json")
-            await message.answer(f"Контакт {username} теперь является администратором и может отвечать за валидацию чатов.")
+    authorized = message.from_user.username in users["admins"] or message.from_user.username in users["validators"]
+    if authorized:
+        match = TG_PROFILE_REGEX.search(message.text)
+        if match:
+            username = match.group(1)
+            if username not in users["admins"]:
+                users["admins"][username] = None
+                users["validators"][username] = None
+                save_state(users, "users_v2.json")
+                await message.answer(f"Контакт {username} теперь является администратором и может отвечать за валидацию чатов. Для активации данных возможностей указанный вами контакт должен активировать личные сообщение с ботом командой /start.")
+            else:
+                await message.answer("Контакт уже является администратором")
         else:
-            await message.answer("Контакт уже является администратором")
+            await message.answer("Ссылка некорректна, попробуйте ещё раз.")
     else:
-        await message.answer("Ссылка некорректна, попробуйте ещё раз.")
-        
+        reject_unauthorized_user(message)
+
+@dp.message(F.text.regexp(TG_USERNAME_REGEX))
+async def process_username(message: Message):
+    authorized = message.from_user.username in users["admins"] or message.from_user.username in users["validators"]
+    if authorized:
+        match = TG_USERNAME_REGEX.search(message.text)
+        if match:
+            username = match.group(1)
+            if username != users["validators"]["active_validator"]:
+                users["validators"]["active_validator"] = username
+                save_state(users, "users_v2.json")
+                await message.answer(f"Контакт {username} теперь отвечает за валидацию чатов. Для активации данных возможностей указанный вами контакт должен активировать личные сообщение с ботом командой /start.")
+            else:
+                await message.answer("Контакт уже является валидатором")
+        else:
+            await message.answer("Ссылка некорректна, попробуйте ещё раз.")
+    else:
+        reject_unauthorized_user(message)
+
+
 @dp.message(Command("enable"))
 async def enable_bot_in_group(message: Message):
     """
@@ -189,7 +217,11 @@ async def command_start_handler(message: Message) -> None:
     """
     This handler receives messages with `/start` command
     """
-    if (message.from_user.id in users["authorized"]):
+    authorized = message.from_user.username in users["admins"] or message.from_user.username in users["validators"]
+    if (authorized):
+        if (users["admins"][message.from_user.username] == None) : 
+            users["admins"][message.from_user.username] = message.from_user.id
+            users["validators"][message.from_user.username] = message.from_user.id
         await message.answer(f"Hello, {html.bold(message.from_user.full_name)}!")
     else: 
         await reject_unauthorized_user(message)
@@ -223,5 +255,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     #Bot settings
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    users = load_state("users.json")
+    users = load_state("users_v2.json")
     asyncio.run(main())
