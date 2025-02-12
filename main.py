@@ -60,7 +60,8 @@ async def bot_added_to_group_handler(event: ChatMemberUpdated):
     Function sends a callback query 
     """
     if event.new_chat_member.user.id == (await bot.me()).id:
-        validator_id = users["roles"]["chat_validators"][0]
+        validator_username = users["validators"]["active_validator"]
+        validator_id = users["validators"][validator_username]
         group_name = event.chat.title
 
         keyboard = InlineKeyboardBuilder()
