@@ -114,7 +114,7 @@ async def change_settings(message : Message):
         if message.chat.type == "private":
             keyboard = InlineKeyboardBuilder()
             keyboard.button(text="Добавить Администратора", callback_data=f"settings:add_admin:{message.from_user.id}")
-            keyboard.button(text="Сменить Администратора-валидатора", callback_data=f"settings:set_validator:{message.from_user.id}")
+            keyboard.button(text="Сменить Валидатора", callback_data=f"settings:set_validator:{message.from_user.id}")
             keyboard.adjust(2)
 
             await bot.send_message(
@@ -236,7 +236,7 @@ async def translate_handler(message: Message) -> None:
     """
     if (group_states.get(str(message.chat.id), False)):
         try:
-            await message.reply("TRANSLATED TO:\n" +await translator.translate(str(message.text)))
+            await message.reply(f"{message.from_user.full_name}:\n" + translator.translate(str(message.text)))
         except TypeError:
             pass
     
@@ -253,7 +253,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     # Advanced logging output  
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    #logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     #Bot settings
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     users = load_state("users_v2.json")
