@@ -8,7 +8,7 @@ from dotenv import dotenv_values
 import atexit
 import re
 
-from aiogram import Bot, Dispatcher, html, F
+from aiogram import Bot, Dispatcher, html, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command, ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
@@ -25,11 +25,18 @@ if os.name == "nt": #If bot is hosted on Windows
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 TOKEN = config["BOT_TOKEN"]
+form_router = Router()
 dp = Dispatcher()
+dp.include_router(form_router)
 
 STATE_FILE = "chat_state.json"
 TG_PROFILE_REGEX = re.compile(r"https?://t\.me/([\w\d_]+)")
 TG_USERNAME_REGEX = re.compile(r'@(\w{5,32})')
+
+
+class Lang(StatesGroup):
+    direction = State()
+    pair = State()
 
 def load_state(filename:str) -> dict:
     """
@@ -42,7 +49,7 @@ def load_state(filename:str) -> dict:
     except FileNotFoundError:
         return {} 
 
-@atexit.register
+
 def save_state(state: dict, filename:str) -> None:
     """
     Function saves chat status
@@ -115,7 +122,8 @@ async def change_settings(message : Message):
             keyboard = InlineKeyboardBuilder()
             keyboard.button(text="Добавить Администратора", callback_data=f"settings:add_admin:{message.from_user.id}")
             keyboard.button(text="Сменить Валидатора", callback_data=f"settings:set_validator:{message.from_user.id}")
-            keyboard.adjust(2)
+            keyboard.button(text="Добавить устойчивое выражение в словарь", callback_data=f"settings:manage_glossary:{message.from_user.id}")
+            keyboard.adjust(3)
 
             await bot.send_message(
                 message.from_user.id,
@@ -128,7 +136,7 @@ async def change_settings(message : Message):
         reject_unauthorized_user(message=message)
 
 @dp.callback_query(F.data.startswith("settings:"))
-async def activate_group(callback: CallbackQuery, state: FSMContext):
+async def activate_group(callback: CallbackQuery):
     """
     """
     action = callback.data.split(":")[1]
@@ -144,10 +152,70 @@ async def activate_group(callback: CallbackQuery, state: FSMContext):
                 if user!="active_validator" and user!=users["validators"]["active_validator"]:
                      val_list+="@"+str(user)+"\n"
             await callback.message.edit_text(f"В данный момент за валидацию отвечает пользователь {avt_val}.\nВыберите из списка валидатора, которого вы хотите назначить ответственным за подтверждение чатов:\n{val_list}")
+        case "manage_glossary":
+            keyboard = InlineKeyboardBuilder()
+            keyboard.button(text="Ру -> Фр", callback_data=f"management:glossary:ru-fr:{admin_id}")
+            keyboard.button(text="Фр -> Ру", callback_data=f"management:glossary:fr-ru:{admin_id}")
+            keyboard.adjust(2)
+            await bot.send_message(
+                admin_id,
+                f"Выберите языковую пару, в которую будет внесено устойчивое выражение:",
+                reply_markup=keyboard.as_markup()
+            )
+
+
+            
+            # with open("glossaries.json") as file:
+            #     glossaries = json.load(file)
+@dp.callback_query(F.data.startswith("management"))
+async def push_lang_pair(callback: CallbackQuery, state:FSMContext):
+    manage_object = callback.data.split(":")[1]
+    admin_id = callback.data.split(":")[3]
+    match manage_object:
+        case "glossary":
+            await state.set_state(Lang.direction)
+            await state.update_data(direction = callback.data.split(":")[2])
+            await state.set_state(Lang.pair)
+            source_lang= callback.data.split(":")[2].split("-")[0]
+            dest_lang = callback.data.split(":")[2].split("-")[1]
+            ex = {
+                "fr":"Salut",
+                "ru":"Привет"
+            }
+            await callback.message.edit_text(f"Отправьте в чат языковую пару в следующем формате:\n {ex[source_lang]}/{ex[dest_lang]}")        
+@form_router.message(Command("cancel"))
+
+@form_router.message(F.text.casefold() == "cancel")
+
+async def cancel_handler(message: Message, state: FSMContext) -> None:
+    """
+    Allow user to cancel any action
+    """
+    current_state = await state.get_state()
+    if current_state is None:
+        return
+    await state.clear()
+
+    await message.answer("Cancelled.")
+
+@form_router.message(Lang.pair)
+async def push_pair(message:Message, state:FSMContext):
+    data = await state.get_value("direction")
+    await state.clear()
+    source_lang= str(data).split("-")[0]
+    dest_lang = str(data).split("-")[1]
+    src = message.text.split("/")[0]
+    dest = message.text.split("/")[1]
+    translator.push_to_glossary(source_lang,dest_lang,(src,dest))
+    global glossary_ru_fr
+    glossary_ru_fr = load_state("glossaries.json")["ru-fr"]["glossary_id"]
+    global glossary_fr_ru 
+    glossary_fr_ru= load_state("glossaries.json")["fr-ru"]["glossary_id"]
+    await message.answer(f"{src}/{dest} добавленно в устойчивые выражения")
 
 @dp.message(F.text.regexp(TG_PROFILE_REGEX))
 async def process_contact(message: Message):
-    authorized = message.from_user.username in users["admins"] or message.from_user.username in users["validators"]
+    authorized = (message.from_user.username in users["admins"] or message.from_user.username in users["validators"]) and message.chat.type == 'private'
     if authorized:
         match = TG_PROFILE_REGEX.search(message.text)
         if match:
@@ -161,8 +229,8 @@ async def process_contact(message: Message):
                 await message.answer("Контакт уже является администратором")
         else:
             await message.answer("Ссылка некорректна, попробуйте ещё раз.")
-    else:
-        reject_unauthorized_user(message)
+    # else:
+    #     reject_unauthorized_user(message)
 
 @dp.message(F.text.regexp(TG_USERNAME_REGEX))
 async def process_username(message: Message):
@@ -236,7 +304,7 @@ async def translate_handler(message: Message) -> None:
     """
     if (group_states.get(str(message.chat.id), False)):
         try:
-            await message.reply(f"{message.from_user.full_name}:\n" + translator.translate(str(message.text)))
+            await message.reply(f"{message.from_user.full_name}:\n" + translator.translate(str(message.text),glossary_ru_fr,glossary_fr_ru))
         except TypeError:
             pass
     
@@ -251,10 +319,14 @@ async def reject_unauthorized_user(message : Message) ->None:
 async def main() -> None:
     await dp.start_polling(bot)
 
+
 if __name__ == "__main__":
     # Advanced logging output  
     #logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     #Bot settings
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     users = load_state("users_v2.json")
+    
+    glossary_ru_fr = load_state("glossaries.json")["ru-fr"]["glossary_id"]
+    glossary_fr_ru = load_state("glossaries.json")["fr-ru"]["glossary_id"]
     asyncio.run(main())
